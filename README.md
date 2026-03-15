@@ -4,3 +4,7 @@ Goal is to rank rookies for NFL fantasy drafts.
 
 # Contributors 
 - SunkenCosts
+- nloughl
+
+## Whiteboard
+https://excalidraw.com/#json=H-QvUQf5hB3_Y4wodCSY8,kUNAFQ3bcKE9v2QUoxy0Aw 
