@@ -7,12 +7,25 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 
-# load data
-df = pd.read_csv("draft_and_fantasy_data.csv")
+# load data - Ben switched it to use new df
+df = pd.read_csv("merged_nfl_college_2024.csv")
 df_copy = df.copy()
 
 # remove un-needed cols
-df.drop(columns=["player_id", "season", "gsis_id", "pfr_player_name"], inplace=True)
+columns_to_drop = [
+    "Unnamed: 0",
+    "season_x",
+    "round",
+    "gsis_id",
+    "player_id",
+    "playerId",
+    "matched_name",
+    "player",
+    "position_y",
+    "season_y",
+    "pfr_player_name",
+]
+df.drop(columns=columns_to_drop, inplace=True, errors="ignore")
 
 # target
 target = "fantasy_points"

@@ -5,6 +5,7 @@ import pandas as pd
 def get_player_stats(year):
     player_stats = nfl.load_player_stats(year)
     player_stats = player_stats.to_pandas()
+
     return player_stats
 
 
@@ -37,7 +38,7 @@ def get_rookie_fantasy_points(df):
             }
             seen.add(player)
 
-    fantasy_points.to_csv("fantasy_points.csv")
+    fantasy_points.to_csv("data/fantasy_points.csv")
     return fantasy_points
 
 
@@ -51,7 +52,7 @@ def filter_draft_picks(df):
     filtered_draft_picks = df.filter(
         items=["season", "round", "pick", "position", "pfr_player_name", "gsis_id"]
     )
-    filtered_draft_picks.to_csv("draft_picks.csv")
+    filtered_draft_picks.to_csv("data/draft_picks.csv")
     return filtered_draft_picks
 
 
@@ -63,7 +64,7 @@ def merge_dfs(filtered_draft_picks, fantasy_points):
         left_on="gsis_id",
         right_on="player_id",
     )
-    merged_df.to_csv("draft_and_fantasy_data.csv")
+    merged_df.to_csv("data/draft_and_fantasy_data.csv")
     return merged_df
 
 
@@ -73,7 +74,7 @@ def main():
     draft_info = get_draft_picks(2025)
     draft_info = filter_draft_picks(draft_info)
     final_df = merge_dfs(fantasy_points=fantasy_points, filtered_draft_picks=draft_info)
-    return "Done! Final df saved to draft_and_fantasy_data.csv"
+    return "Done! Final df saved to data/draft_and_fantasy_data.csv"
 
 
 if __name__ == "__main__":
