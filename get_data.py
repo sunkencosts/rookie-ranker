@@ -73,8 +73,8 @@ def main():
     fantasy_points = get_rookie_fantasy_points(player_stats)
     draft_info = get_draft_picks(2025)
     draft_info = filter_draft_picks(draft_info)
-    final_df = merge_dfs(fantasy_points=fantasy_points, filtered_draft_picks=draft_info)
-    return "Done! Final df saved to data/draft_and_fantasy_data.csv"
+    merge_dfs(fantasy_points=fantasy_points, filtered_draft_picks=draft_info)
+    return "Done! Rookie Season 2025 saved to data/draft_and_fantasy_data.csv"
 
 
 if __name__ == "__main__":

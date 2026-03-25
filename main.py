@@ -3,15 +3,13 @@ import pandas as pd
 
 
 def main():
-    player_stats = nfl.load_players()
-    df = player_stats.to_pandas()
-    print(df.columns.to_list())
-    df = df.filter(items=['display_name','gsis_id', 'rookie_season','draft_round','draft_pick','draft_year'])
-    players_2024 = df[df["draft_year"]==2025]
-    print(players_2024)
-
-    players_2024.to_csv("df_output.csv")
-   
+    # we should clean up how we call main. right now you should:
+    # python3 get_data.py
+    # python3 college_data.py
+    # python3 model_test.py
+    print("Fix me")
+    # get a command line arguement "force" that will reload all the data.
+    # otherwise, run the scripts above automatically and skip the api calls if the file is in data/
 
 
 if __name__ == "__main__":

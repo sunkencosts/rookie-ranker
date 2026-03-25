@@ -20,6 +20,15 @@ def load_data_from_api(year=2025):
     df.to_csv(f"data/college_stats_{year}.csv")
 
 
+def load_college_data(year=2025, clear_cache=False):
+
+    if not os.path.isfile(f"data/college_stats_{year}.csv") or clear_cache:
+        load_data_from_api(year)
+
+    data = pd.read_csv(f"data/college_stats_{year}.csv")
+    return data
+
+
 def transform_data(df: pd.DataFrame):
     categories = ["passing", "rushing", "receiving"]
     skill_positions = ["QB", "RB", "WR", "TE", "FB", "ATH"]
@@ -46,7 +55,6 @@ def transform_data(df: pd.DataFrame):
 
 
 def merge_data(college_data, nfl_data):
-    print("Merging data")
 
     college_names = college_data["player"].tolist()
 
@@ -63,21 +71,18 @@ def merge_data(college_data, nfl_data):
     )
 
     print(f"Total matched: {len(merged_df)}")
+    merged_df.drop(columns=["Unnamed: 0"], inplace=True)
     merged_df.to_csv("data/merged_nfl_college_2024.csv")
     return merged_df
 
 
 def main():
-    # 2025 college data - to predict on
-    if not os.path.isfile("data/college_stats_2025.csv"):
-        load_data_from_api("2025")
-    # 2024 college data - to train on
-    if not os.path.isfile("data/college_stats_2024.csv"):
-        load_data_from_api("2024")
 
-    df_college_2025 = pd.read_csv("data/college_stats_2025.csv")
-    df_college_2024 = pd.read_csv("data/college_stats_2024.csv")
+    # loads all data from api or csv
+    df_college_2025 = load_college_data(2025)
+    df_college_2024 = load_college_data(2024)
 
+    # transforms data to only include fields we want
     df_college_2025 = transform_data(df_college_2025)
     df_college_2024 = transform_data(df_college_2024)
 
