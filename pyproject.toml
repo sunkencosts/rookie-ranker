@@ -12,4 +12,5 @@ dependencies = [
     "rapidfuzz>=3.0",
     "requests>=2.31",
     "scikit-learn>=1.4",
+    "shap>=0.44",
 ]

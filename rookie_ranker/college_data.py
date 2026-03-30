@@ -33,7 +33,9 @@ def pivot_college_stats(df):
     offense_stats = df[
         df["position"].isin(SKILL_POSITIONS) & df["category"].isin(STAT_CATEGORIES)
     ].copy()
-    offense_stats["stat_name"] = offense_stats["category"] + "_" + offense_stats["statType"]
+    offense_stats["stat_name"] = (
+        offense_stats["category"] + "_" + offense_stats["statType"]
+    )
 
     return (
         offense_stats.pivot_table(
@@ -45,6 +47,16 @@ def pivot_college_stats(df):
         .reset_index()
         .fillna(0)
     )
+
+
+def get_multi_season_players(years, min_seasons=3):
+    """Return set of playerIds who appear in at least min_seasons of the given years."""
+    from collections import Counter
+    counts = Counter()
+    for year in years:
+        df = load_college_data(year)
+        counts.update(df["playerId"].unique())
+    return {pid for pid, count in counts.items() if count >= min_seasons}
 
 
 def merge_college_and_nfl(college_data, nfl_data):
