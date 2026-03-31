@@ -1,7 +1,9 @@
 import argparse
+import csv
 import os
 import joblib
 import pandas as pd
+from datetime import datetime
 
 from rookie_ranker.nfl_data import load_nfl_data
 from rookie_ranker.college_data import (
@@ -14,18 +16,28 @@ from rookie_ranker.model import load_training_data, train, evaluate, save_predic
 from rookie_ranker.features import NUMERIC_FEATURES, NUMERIC_FEATURES_WITH_PICK, filter_prospects
 
 # Each tuple is (college_year, nfl_rookie_year)
-TRAINING_YEARS = [
+# With-pick uses all years — draft position is a stable signal across eras
+# No-pick uses recent years only — college stat patterns have shifted with rule changes
+TRAINING_YEARS_ALL = [
+    (2014, 2015),
+    (2015, 2016),
+    (2016, 2017),
+    (2017, 2018),
+    (2018, 2019),
+    (2019, 2020),
     (2020, 2021),
     (2021, 2022),
     (2022, 2023),
     (2023, 2024),
     (2024, 2025),
 ]
+TRAINING_YEARS_RECENT = [y for y in TRAINING_YEARS_ALL if y[0] >= 2020]
 
 COMBINED_TRAINING_PATH = "data/processed/training_data_combined.csv"
 PREDICTIONS_PATH = "data/output/test_predictions.csv"
 MODEL_PATH_NO_PICK = "models/model_no_pick.pkl"
 MODEL_PATH_WITH_PICK = "models/model_with_pick.pkl"
+MODEL_LOG_PATH = "data/model_log.csv"
 
 PREDICT_YEAR = 2026
 PREDICT_COLLEGE_YEAR = PREDICT_YEAR - 1
@@ -58,39 +70,91 @@ def fetch_year(college_year, nfl_year, force=False):
     return df_merged
 
 
-def run_pipeline(force=False):
+def log_run(n_rows, cv_no_pick, cv_std_no_pick, cv_with_pick, cv_std_with_pick, note=""):
+    """Append a training run entry to the model log."""
+    os.makedirs("data", exist_ok=True)
+    write_header = not os.path.isfile(MODEL_LOG_PATH)
+    with open(MODEL_LOG_PATH, "a", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow([
+                "timestamp", "note", "years_no_pick", "years_with_pick", "n_rows_no_pick",
+                "cv_r2_no_pick", "cv_std_no_pick",
+                "cv_r2_with_pick", "cv_std_with_pick",
+            ])
+        writer.writerow([
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            note,
+            len(TRAINING_YEARS_RECENT),
+            len(TRAINING_YEARS_ALL),
+            n_rows,
+            f"{cv_no_pick:.3f}",
+            f"{cv_std_no_pick:.3f}",
+            f"{cv_with_pick:.3f}",
+            f"{cv_std_with_pick:.3f}",
+        ])
+
+
+def run_pipeline(force=False, note=""):
     os.makedirs("data/raw", exist_ok=True)
     os.makedirs("data/processed", exist_ok=True)
     os.makedirs("data/output", exist_ok=True)
     os.makedirs("models", exist_ok=True)
 
-    # --- Fetch all year pairs ---
-    frames = []
-    for college_year, nfl_year in TRAINING_YEARS:
-        df = fetch_year(college_year, nfl_year, force=force)
-        frames.append(df)
+    # --- Fetch all year pairs (full history) ---
+    for college_year, nfl_year in TRAINING_YEARS_ALL:
+        fetch_year(college_year, nfl_year, force=force)
 
-    df_combined = pd.concat(frames, ignore_index=True)
-    df_combined.to_csv(COMBINED_TRAINING_PATH, index=False)
-    print(f"\nCombined training set: {len(df_combined)} rows across {len(TRAINING_YEARS)} years.")
+    # No-pick: recent years only (college stat patterns shift with rule changes)
+    recent_frames = [pd.read_csv(f"data/processed/training_data_{cy}.csv") for cy, _ in TRAINING_YEARS_RECENT]
+    df_recent = pd.concat(recent_frames, ignore_index=True)
+    df_recent.to_csv(COMBINED_TRAINING_PATH.replace(".csv", "_recent.csv"), index=False)
 
-    # --- Train models ---
-    df = load_training_data(COMBINED_TRAINING_PATH)
+    # With-pick: all years (draft position is stable across eras)
+    all_frames = [pd.read_csv(f"data/processed/training_data_{cy}.csv") for cy, _ in TRAINING_YEARS_ALL]
+    df_all = pd.concat(all_frames, ignore_index=True)
+    df_all.to_csv(COMBINED_TRAINING_PATH, index=False)
+
+    print(f"\nNo-pick training: {len(df_recent)} rows ({len(TRAINING_YEARS_RECENT)} years)")
+    print(f"With-pick training: {len(df_all)} rows ({len(TRAINING_YEARS_ALL)} years)")
+
+    df_recent_prep = load_training_data(COMBINED_TRAINING_PATH.replace(".csv", "_recent.csv"))
+    df_all_prep = load_training_data(COMBINED_TRAINING_PATH)
 
     print("\nEvaluating model (no pick)...")
-    cross_validate(df, numeric_features=NUMERIC_FEATURES)
-    model_no_pick, x_test, y_test = train(df, numeric_features=NUMERIC_FEATURES)
+    cv_no_pick, cv_std_no_pick = cross_validate(df_recent_prep, numeric_features=NUMERIC_FEATURES)
+    model_no_pick, x_test, y_test = train(df_recent_prep, numeric_features=NUMERIC_FEATURES)
     y_pred = evaluate(model_no_pick, x_test, y_test)
-    save_predictions(df, x_test, y_pred, PREDICTIONS_PATH)
+    save_predictions(df_recent_prep, x_test, y_pred, PREDICTIONS_PATH)
     joblib.dump(model_no_pick, MODEL_PATH_NO_PICK)
     print(f"Model saved to {MODEL_PATH_NO_PICK}")
 
     print("\nEvaluating model (with pick)...")
-    cross_validate(df, numeric_features=NUMERIC_FEATURES_WITH_PICK)
-    model_with_pick, x_test, y_test = train(df, numeric_features=NUMERIC_FEATURES_WITH_PICK)
+    cv_with_pick, cv_std_with_pick = cross_validate(df_all_prep, numeric_features=NUMERIC_FEATURES_WITH_PICK)
+    model_with_pick, x_test, y_test = train(df_all_prep, numeric_features=NUMERIC_FEATURES_WITH_PICK)
     evaluate(model_with_pick, x_test, y_test)
     joblib.dump(model_with_pick, MODEL_PATH_WITH_PICK)
     print(f"Model saved to {MODEL_PATH_WITH_PICK}")
+
+    log_run(len(df_recent_prep), cv_no_pick, cv_std_no_pick, cv_with_pick, cv_std_with_pick, note=note)
+    print(f"\nRun logged to {MODEL_LOG_PATH}")
+
+
+def print_rankings(rankings):
+    top_per_pos = {"QB": 5, "RB": 8, "WR": 10, "TE": 5, "FB": 2, "ATH": 2}
+    print(f"\n{PREDICT_YEAR} Rookie Rankings\n{'='*60}")
+    for pos, n in top_per_pos.items():
+        group = rankings[rankings["position"] == pos].head(n).reset_index(drop=True)
+        if group.empty:
+            continue
+        print(f"\n  {pos}")
+        print(f"  {'#':<4} {'Player':<26} {'Conf':<20} {'Pts':>6}  {'Gap':>6}")
+        print(f"  {'-'*64}")
+        prev_pts = None
+        for _, row in group.iterrows():
+            gap = f"-{prev_pts - row['predicted_fantasy_points']:.1f}" if prev_pts is not None else ""
+            print(f"  {int(row['position_rank']):<4} {row['player']:<26} {row['conference']:<20} {row['predicted_fantasy_points']:>6.1f}  {gap:>6}")
+            prev_pts = row['predicted_fantasy_points']
 
 
 def run_predict(force=False):
@@ -121,25 +185,15 @@ def run_predict(force=False):
         .astype(int)
     )
     rankings.to_csv(RANKINGS_PATH, index=False)
-
-    print(f"\n{PREDICT_YEAR} Rookie Rankings by Position\n")
-    top_per_pos = {"QB": 5, "RB": 8, "WR": 10, "TE": 5, "FB": 2, "ATH": 2}
-    for pos, n in top_per_pos.items():
-        group = rankings[rankings["position"] == pos].head(n)
-        if group.empty:
-            continue
-        print(f"--- {pos} ---")
-        print(group[["position_rank", "player", "conference", "predicted_fantasy_points"]].to_string(index=False))
-        print()
+    print_rankings(rankings)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Rookie Ranker pipeline")
-    parser.add_argument(
-        "--force", action="store_true", help="Force reload all data from APIs"
-    )
+    parser.add_argument("--force", action="store_true", help="Force reload all data from APIs")
     parser.add_argument("--predict", action="store_true", help="Predict points for upcoming rookie class")
     parser.add_argument("--explain", type=str, metavar="PLAYER", help="Explain prediction for a specific player")
+    parser.add_argument("--note", type=str, default="", help="Note to attach to this training run in the log")
     args = parser.parse_args()
 
     if args.explain:
@@ -152,7 +206,7 @@ def main():
     elif args.predict:
         run_predict(force=args.force)
     else:
-        run_pipeline(force=args.force)
+        run_pipeline(force=args.force, note=args.note)
 
 
 if __name__ == "__main__":

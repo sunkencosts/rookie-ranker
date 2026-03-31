@@ -67,6 +67,7 @@ def cross_validate(df, numeric_features=NUMERIC_FEATURES, cv=5):
     model = build_model(numeric_features=numeric_features)
     scores = cross_val_score(model, x, y, cv=cv, scoring="r2")
     print(f"CV R² = {scores.mean():.3f} ± {scores.std():.3f}  (across {cv} folds)")
+    return scores.mean(), scores.std()
 
 
 def load_model(path):

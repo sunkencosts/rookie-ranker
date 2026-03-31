@@ -86,12 +86,24 @@ def prepare_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=ARTIFACT_COLUMNS, errors="ignore")
     df = df[df["position_x"].isin(SKILL_POSITIONS)].copy()
 
-    # Zero out all passing stats for non-QBs or players with < 5 attempts
+    # Passing stats are only meaningful for QBs
+    non_qb = df["position_x"] != "QB"
+    for col in ["passing_YDS", "passing_TD", "passing_YPA"]:
+        if col in df.columns:
+            df.loc[non_qb, col] = 0
+
+    # Zero passing for QBs who barely threw (gadget plays, backups)
     if "passing_ATT" in df.columns:
-        non_passer = df["passing_ATT"] < 5
+        low_att = (df["position_x"] == "QB") & (df["passing_ATT"] < 5)
         for col in ["passing_YDS", "passing_TD", "passing_YPA"]:
             if col in df.columns:
-                df.loc[non_passer, col] = 0
+                df.loc[low_att, col] = 0
+
+    # Rushing stats are rarely meaningful for TEs
+    te_mask = df["position_x"] == "TE"
+    for col in ["rushing_YDS", "rushing_TD", "rushing_CAR"]:
+        if col in df.columns:
+            df.loc[te_mask, col] = 0
 
     df["total_touchdowns"] = df["passing_TD"] + df["rushing_TD"] + df["receiving_TD"]
     df["yards_from_scrimmage"] = df["rushing_YDS"] + df["receiving_YDS"]

@@ -59,6 +59,16 @@ def get_multi_season_players(years, min_seasons=3):
     return {pid for pid, count in counts.items() if count >= min_seasons}
 
 
+def get_player_first_seasons(years):
+    """Return a Series mapping playerId -> first season seen across the given years."""
+    frames = []
+    for year in years:
+        df = load_college_data(year)[["playerId", "season"]].drop_duplicates()
+        frames.append(df)
+    all_seasons = pd.concat(frames)
+    return all_seasons.groupby("playerId")["season"].min().rename("first_season")
+
+
 def merge_college_and_nfl(college_data, nfl_data):
     college_names = college_data["player"].tolist()
     nfl_data = nfl_data.copy()
