@@ -140,21 +140,38 @@ def run_pipeline(force=False, note=""):
     print(f"\nRun logged to {MODEL_LOG_PATH}")
 
 
+def print_position_group(group, label):
+    if group.empty:
+        return
+    print(f"\n  {label}")
+    print(f"  {'#':<4} {'Player':<26} {'Conf':<20} {'Pts':>6}  {'Gap':>6}")
+    print(f"  {'-'*64}")
+    prev_pts = None
+    for rank, (_, row) in enumerate(group.iterrows(), 1):
+        gap = f"-{prev_pts - row['predicted_fantasy_points']:.1f}" if prev_pts is not None else ""
+        print(f"  {rank:<4} {row['player']:<26} {row['conference']:<20} {row['predicted_fantasy_points']:>6.1f}  {gap:>6}")
+        prev_pts = row['predicted_fantasy_points']
+
+
 def print_rankings(rankings):
     top_per_pos = {"QB": 5, "RB": 8, "WR": 10, "TE": 5, "FB": 2, "ATH": 2}
+    has_mixed = "model" in rankings.columns and rankings["model"].nunique() > 1
+
     print(f"\n{PREDICT_YEAR} Rookie Rankings\n{'='*60}")
     for pos, n in top_per_pos.items():
-        group = rankings[rankings["position"] == pos].head(n).reset_index(drop=True)
-        if group.empty:
+        pos_group = rankings[rankings["position"] == pos]
+        if pos_group.empty:
             continue
-        print(f"\n  {pos}")
-        print(f"  {'#':<4} {'Player':<26} {'Conf':<20} {'Pts':>6}  {'Gap':>6}")
-        print(f"  {'-'*64}")
-        prev_pts = None
-        for _, row in group.iterrows():
-            gap = f"-{prev_pts - row['predicted_fantasy_points']:.1f}" if prev_pts is not None else ""
-            print(f"  {int(row['position_rank']):<4} {row['player']:<26} {row['conference']:<20} {row['predicted_fantasy_points']:>6.1f}  {gap:>6}")
-            prev_pts = row['predicted_fantasy_points']
+
+        if has_mixed:
+            with_pick = pos_group[pos_group["model"] == "with_pick"].head(n).reset_index(drop=True)
+            no_pick = pos_group[pos_group["model"] == "no_pick"].head(n).reset_index(drop=True)
+            if not with_pick.empty:
+                print_position_group(with_pick, f"{pos}  [draft-projected, with-pick model]")
+            if not no_pick.empty:
+                print_position_group(no_pick, f"{pos}  [no projection, no-pick model]")
+        else:
+            print_position_group(pos_group.head(n).reset_index(drop=True), pos)
 
 
 def run_predict(force=False):
@@ -177,8 +194,27 @@ def run_predict(force=False):
     df_prospects = df_prospects[df_prospects["playerId"].isin(returning)]
     print(f"Filtered to {len(df_prospects)} prospects with 3+ college seasons.")
 
-    model = load_model(MODEL_PATH_NO_PICK)
-    rankings = predict(model, df_prospects)
+    draft_proj_path = f"data/raw/draft_projections_{PREDICT_YEAR}.csv"
+    if os.path.isfile(draft_proj_path):
+        df_proj = pd.read_csv(draft_proj_path)[["player", "pick"]]
+        df_merged = df_prospects.merge(df_proj, on="player", how="left")
+        has_pick = df_merged["pick"].notna()
+        n_with_pick = has_pick.sum()
+
+        print(f"\n{n_with_pick} prospects have draft projections — using with-pick model for those.")
+        model_no_pick = load_model(MODEL_PATH_NO_PICK)
+        model_with_pick = load_model(MODEL_PATH_WITH_PICK)
+
+        r1 = predict(model_with_pick, df_merged[has_pick].copy())
+        r1["model"] = "with_pick"
+        r2 = predict(model_no_pick, df_merged[~has_pick].copy())
+        r2["model"] = "no_pick"
+        rankings = pd.concat([r1, r2], ignore_index=True)
+    else:
+        model_no_pick = load_model(MODEL_PATH_NO_PICK)
+        rankings = predict(model_no_pick, df_prospects)
+        rankings["model"] = "no_pick"
+
     rankings["position_rank"] = (
         rankings.groupby("position")["predicted_fantasy_points"]
         .rank(ascending=False)
